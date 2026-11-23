@@ -10,7 +10,7 @@ saying records are AI-generated.
 
 **Code to know:**
 - `pyproject.toml`: lists the project's dependencies (streamlit, pandas, scikit-learn, pydantic,
-  anthropic), plus pytest as a dev-only extra, and tells pytest to look in `tests/`.
+  openai), plus pytest as a dev-only extra, and tells pytest to look in `tests/`.
 - `.gitignore`: keeps the virtual environment, the database folder, caches and build leftovers
   out of git.
 - `research_engine/__init__.py`: an empty file that makes `research_engine/` a Python package,
@@ -49,7 +49,7 @@ declared dependencies, importable package) before writing features, so anyone ca
 
 ## Step 1: Pydantic models
 **What it built:** The data shapes the whole app uses: the paper's metadata from arXiv, a study
-record (the structured summary Claude will write for each paper), and a `Paper` that combines
+record (the structured summary the LLM will write for each paper), and a `Paper` that combines
 the two. Seven tests check that good data loads, bad data is rejected and everything survives a
 round trip to JSON.
 
@@ -57,7 +57,7 @@ round trip to JSON.
 - `PaperMetadata`: title, authors, date, category and abstract from the arXiv API. Has an
   `arxiv_url` property that builds the link to the paper.
 - `KeyConcept`: a term and a plain explanation.
-- `StudyRecord`: the schema for Claude's output: plain summary, key concepts, background,
+- `StudyRecord`: the schema for the LLM's output: plain summary, key concepts, background,
   research question, methods, data, key results, limitations and keywords.
 - `Paper`: metadata + record + the time it was added.
 - `tests/test_models.py`: checks valid data, a missing field, a wrong type, JSON round trips,
@@ -67,29 +67,29 @@ round trip to JSON.
 - **Pydantic `BaseModel`:** a class whose fields have types. Creating an instance validates the
   data and raises `ValidationError` if something is missing or the wrong type.
 - **`Field(description=...)`:** text attached to a field. It becomes part of the JSON schema,
-  which in step 4 is sent to Claude, so the descriptions act as instructions.
+  which in step 4 is sent to the LLM, so the descriptions act as instructions.
 - **JSON round trip:** `model_dump_json()` turns a model into text and `model_validate_json()`
   rebuilds it. That is how a record will be stored in one SQLite column.
 
 **Design choices:**
-- Metadata comes from the arXiv API, not from Claude. Simpler alternative: ask Claude for the
+- Metadata comes from the arXiv API, not from the LLM. Simpler alternative: ask the LLM for the
   title and authors. The API is exact, and the filters depend on exact values.
 - "3 to 6 concepts" is only in the description, not enforced. Simpler alternative:
-  `min_length`/`max_length`. A hard limit would make a whole paper fail if Claude returned 7.
+  `min_length`/`max_length`. A hard limit would make a whole paper fail if the LLM returned 7.
   This is listed as a known limitation.
 - Lists for methods, results and limitations; plain strings for data and research question.
   Simpler alternative: strings everywhere. Lists display as bullets and compare well side by side.
 
 **Why it matters (interview):** It shows I define the data contract first and validate it, rather
-than passing loose dictionaries around. That makes the Claude output checkable.
+than passing loose dictionaries around. That makes the LLM output checkable.
 
 **Likely interview questions:**
 - *Why Pydantic instead of a dict or a dataclass?* It validates types when the object is created,
-  and it generates the JSON schema I give to Claude. A dict does neither, and a dataclass only
+  and it generates the JSON schema I give to the LLM. A dict does neither, and a dataclass only
   does the typing.
-- *What happens if Claude returns something that doesn't fit the schema?* Validation fails with
+- *What happens if the LLM returns something that doesn't fit the schema?* Validation fails with
   an error. The paper is reported as failed in the Add tab and the rest of the batch continues.
-- *Why does the metadata not come from Claude?* arXiv already has the exact title, authors and
+- *Why does the metadata not come from the LLM?* arXiv already has the exact title, authors and
   date. Asking a model risks invented details, and the filters need exact values.
 
 ## Step 2: arXiv links and metadata
@@ -137,5 +137,21 @@ limit, User-Agent) and tested it without depending on the network.
   are processed one at a time, which matches arXiv's guidance of one request per 3 seconds.
 - *How do you test code that calls an API?* I split fetching from parsing and saved a real
   response as a fixture. Tests check the parser on that file and never touch the network.
-- *Why not take the metadata from Claude?* arXiv already has it exactly, and the filters on
+- *Why not take the metadata from the LLM?* arXiv already has it exactly, and the filters on
   category, year and author depend on exact values.
+
+## Change of plan: OpenAI instead of Claude
+**What changed:** The app now calls the OpenAI API (`openai` SDK, model `gpt-6-luna`) instead of the
+Claude API, because I have OpenAI credits. Nothing built in steps 0-2 depended on the old choice
+except the dependency list and some wording, so only `pyproject.toml`, PLAN.md and CLAUDE.md changed.
+
+**Why `gpt-6-luna`:** OpenAI's docs call it their most efficient model for focused, high-volume
+tasks. It costs $0.10 per 1M input tokens and $0.50 per 1M output tokens (about 20x cheaper than the
+mid-tier `gpt-6.2-sol` at $2 / $10), has a 1M-token context window so a whole paper fits, and lists
+Structured Outputs among its features. A tiny test call parsed straight into a Pydantic model.
+**Simpler alternative:** `gpt-6.2-sol`, a bit smarter but ~20x the price. Because the model name is one
+constant in `llm.py`, switching later is a one-line change if the records turn out too weak.
+
+**Concepts:** The SDK's `client.responses.parse(..., text_format=StudyRecord)` does the same job as
+Claude's structured outputs: the reply is constrained to the Pydantic schema and arrives validated as
+`response.output_parsed`. Token usage is `response.usage.input_tokens` / `output_tokens`.

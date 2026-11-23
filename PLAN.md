@@ -9,16 +9,16 @@ compare 2–4 papers.
 **Out of scope:** chat/Q&A, chunking, quote checking, PDF upload, deployment, accounts.
 
 **Agreed decisions:**
-- Model `claude-sonnet-5-5`.
-- Claude uses only the paper's own text (for records) or stored records (for comparisons), and
+- Model `gpt-6-luna` via the OpenAI API (the OpenAI SDK replaced the Claude API after step 2).
+- The LLM uses only the paper's own text (for records) or stored records (for comparisons), and
   writes "Not stated in the paper" rather than guessing.
 - Each paper page links to arXiv.
 - One footer note says records are AI-generated and should be checked against the paper.
-- No beta refusal fallback: a declined paper shows "failed" in the progress table and the batch
+- A paper the LLM refuses or can't finish shows "failed" in the progress table and the batch
   carries on.
 - One Streamlit file with tabs.
 
-Steps marked **Learn:** are where you'll meet Streamlit, Pydantic or the Claude API for the first time.
+Steps marked **Learn:** are where you'll meet Streamlit, Pydantic or the OpenAI API for the first time.
 
 ---
 
@@ -32,11 +32,11 @@ ADD PAPERS (one link per line)
     arxiv.fetch_metadata  ──► PaperMetadata        (arXiv Atom API)
     arxiv.fetch_source    ──► bytes                (arxiv.org/e-print/<id>)
     arxiv.flatten_source  ──► one LaTeX string (body only)
-    llm.make_study_record ──► StudyRecord          (ONE Claude call, structured output)
+    llm.make_study_record ──► StudyRecord          (ONE LLM call, structured output)
     storage.save_paper    ──► one row in SQLite
     any error ──► "failed: <reason>", carry on with the next link
 
-USE THE LIBRARY (no Claude calls)
+USE THE LIBRARY (no LLM calls)
   storage.load_library ──► pandas DataFrame (one row per paper)
     ├─ library.apply_filters (category, year range, author) ─► library.search (TF-IDF) ─► results ─► CSV export
     ├─ Paper tab: plain summary → key concepts → background → detailed record → arXiv link
@@ -44,12 +44,12 @@ USE THE LIBRARY (no Claude calls)
 
 COMPARE
   pick 2–4 papers ─► records side by side (st.columns)
-  button ─► llm.write_comparison(stored records only) ─► short markdown text (ONE Claude call, not stored)
+  button ─► llm.write_comparison(stored records only) ─► short markdown text (ONE LLM call, not stored)
 ```
 
 | Choice | Simpler alternative | Why this one |
 |---|---|---|
-| Send Claude the whole LaTeX body | Send only the abstract (much cheaper) | The abstract rarely states methods, data or limitations. The whole paper costs ~$0.10 on Sonnet 5.5, once per paper |
+| Send the LLM the whole LaTeX body | Send only the abstract (cheaper) | The abstract rarely states methods, data or limitations. The whole paper costs roughly $0.01 on gpt-6-luna ($0.10 / $0.50 per 1M input / output tokens), once per paper |
 | One paper at a time, with a progress bar | Run in parallel | Easy to follow and debug. arXiv asks for ≤1 request per 3 s anyway |
 | `ingest.add_papers(ids, on_progress)` callback | Put the loop inside the Add tab | The loop can be tested without Streamlit. The tab just passes a function that moves the bar |
 
@@ -91,7 +91,7 @@ def compare_tab(df, client) -> None: ...
 
 def main() -> None:
     st.set_page_config(page_title="Research Library", layout="wide")
-    db, client = open_db(), anthropic.Anthropic()
+    db, client = open_db(), OpenAI()
     add, lib, paper, gloss, comp = st.tabs(["Add", "Library", "Paper", "Glossary", "Compare"])
     with add:   add_tab(db, client)
     df = storage.load_library(db)               # loaded after Add, so new papers show up at once
@@ -107,8 +107,8 @@ def main() -> None:
 | Separate `research_engine/` (no Streamlit inside) | Logic in `app.py` | Logic outside the UI is testable with plain pytest |
 | `research_engine/` package + editable install | Everything inside `app/` | `streamlit run app/app.py` only puts `app/` on the import path. One install command lets pytest, the script and the app all import the same code |
 
-**Dependencies:** `streamlit`, `pandas`, `scikit-learn`, `pydantic`, `anthropic` (the official
-Claude SDK). Dev only: `pytest`.
+**Dependencies:** `streamlit`, `pandas`, `scikit-learn`, `pydantic`, `openai` (the official
+OpenAI SDK). Dev only: `pytest`.
 - Why pytest, when the stdlib's `unittest` is the simpler alternative? Tests are plain functions
   with `assert`, and `tmp_path` gives each test a fresh db. It's tooling only, never imported by the app.
 - Deliberately not added: `requests` (stdlib `urllib` is enough) and `python-dotenv` (export the
@@ -121,7 +121,7 @@ Claude SDK). Dev only: `pytest`.
 **Learn (Pydantic):**
 - A `BaseModel` subclass is a typed record. Creating one validates the data, and a
   missing field or wrong type raises `ValidationError`.
-- `Field(description=...)` text is sent to Claude as part of the JSON schema, so it doubles as
+- `Field(description=...)` text is sent to the LLM as part of the JSON schema, so it doubles as
   instructions.
 - `.model_dump_json()` / `.model_validate_json()` convert to and from a JSON string. That's how
   the record is stored in SQLite.
@@ -129,7 +129,7 @@ Claude SDK). Dev only: `pytest`.
 ```python
 # research_engine/models.py
 
-class PaperMetadata(BaseModel):          # from the arXiv API, never from Claude
+class PaperMetadata(BaseModel):          # from the arXiv API, never from the LLM
     arxiv_id: str                        # "2310.01234" (no version)
     title: str
     authors: list[str]
@@ -164,8 +164,8 @@ class Paper(BaseModel):                  # what the app works with after loading
 | Choice | Simpler alternative | Why this one |
 |---|---|---|
 | Lists for methods/results/limitations/background | One string per field | They show as bullets and compare well side by side. `data` and `research_question` stay single strings |
-| "3 to 6" in the description only | `Field(min_length=3, max_length=6)` | A hard limit would make the whole paper fail if Claude returns 7. Listed as a known limitation |
-| Metadata from the arXiv API | Ask Claude for title/authors/date | It's the ground truth, it's free, and filters depend on it being exact |
+| "3 to 6" in the description only | `Field(min_length=3, max_length=6)` | A hard limit would make the whole paper fail if the LLM returns 7. Listed as a known limitation |
+| Metadata from the arXiv API | Ask the LLM for title/authors/date | It's the ground truth, it's free, and filters depend on it being exact |
 
 ---
 
@@ -181,7 +181,7 @@ CREATE TABLE IF NOT EXISTS papers (
     abstract         TEXT NOT NULL,
     record_json      TEXT NOT NULL,      -- StudyRecord.model_dump_json()
     latex_text       TEXT NOT NULL,      -- flattened body; lets us regenerate a record without re-downloading
-    model            TEXT NOT NULL,      -- "claude-sonnet-5-5"
+    model            TEXT NOT NULL,      -- "gpt-6-luna"
     input_tokens     INTEGER,            -- cost tracking
     output_tokens    INTEGER,
     added_at         TEXT NOT NULL
@@ -233,15 +233,18 @@ CREATE TABLE IF NOT EXISTS papers (
     grounded in the records only.
   - Asks for about 300 words of markdown covering shared ideas, how the methods and data differ,
     how the results relate, and which to read first.
-- **Learn (Claude API):**
-  - `client = anthropic.Anthropic()` reads `ANTHROPIC_API_KEY` from your environment.
-  - `client.messages.parse(model="claude-sonnet-5-5", max_tokens=16000, system=..., messages=[{"role": "user", "content": ...}], output_format=StudyRecord, output_config={"effort": "medium"})`
-    constrains the reply to the Pydantic schema and returns it validated as `response.parsed_output`.
-  - The comparison uses plain `client.messages.create(...)` and joins the `text` blocks.
-  - `response.usage` gives the input and output tokens, which is what you pay for.
-  - `response.stop_reason` is `"end_turn"` normally. We raise a clear error on `"max_tokens"` or `"refusal"`.
-  - Don't pass `temperature`: Sonnet 5.5 rejects it. `effort` is the cost/quality dial.
-  - Rough cost: ~$0.10 per paper record, ~$0.02 per comparison.
+- **Learn (OpenAI API):**
+  - `client = OpenAI()` reads `OPENAI_API_KEY` from your environment.
+  - `client.responses.parse(model=MODEL, instructions=..., input=..., text_format=StudyRecord, max_output_tokens=16000)`
+    constrains the reply to the Pydantic schema and returns it validated as `response.output_parsed`.
+    (`MODEL = "gpt-6-luna"` is one constant at the top of `llm.py`.)
+  - The comparison uses plain `client.responses.create(...)` and reads `response.output_text`.
+  - `response.usage.input_tokens` and `.output_tokens` are what you pay for. We store them.
+  - `response.status` is `"completed"` normally. We raise a clear error on `"incomplete"`
+    (ran out of tokens or was filtered) or when `output_parsed` is empty (the model refused).
+  - Don't pass `temperature`: the newest OpenAI models don't need it. The model thinks a little
+    before answering, and those reasoning tokens count as output, hence the generous `max_output_tokens`.
+  - Rough cost: ~$0.01 per paper record, ~$0.005 per comparison (measured values are in STEP_LOG.md).
   - Testability: both functions take `client` as an argument, so tests pass a fake object and
     never call the API.
 
@@ -281,7 +284,7 @@ CREATE TABLE IF NOT EXISTS papers (
 | Choice | Simpler alternative | Why this one |
 |---|---|---|
 | Search the record text, not the LaTeX | Index the full LaTeX | Records are clean prose. LaTeX is noisy and makes search slower |
-| Glossary computed on the fly | A separate `concepts` table | Nothing to keep in sync, and no extra Claude calls (as specified) |
+| Glossary computed on the fly | A separate `concepts` table | Nothing to keep in sync, and no extra LLM calls (as specified) |
 | Comparison not stored, kept in `st.session_state` | A `comparisons` table | One fewer table. Clicking the button again regenerates it for ~$0.02 |
 | Compare with `st.columns` + `render_record` | One wide pandas table | Long text is unreadable in table cells, and it reuses the Paper tab's renderer |
 
@@ -307,9 +310,9 @@ CREATE TABLE IF NOT EXISTS papers (
    single-file paper, a multi-file paper with `\input`, a PDF-only source, and comment stripping.
    **Check:** `try_paper.py source <link>` prints the first 1,500 characters of the body.
 4. **llm.make_study_record.** Tests with a fake client: the paper text reaches the prompt, the
-   record comes back, and a `refusal` stop reason raises. **Check:** `export ANTHROPIC_API_KEY=...`,
+   record comes back, and an `incomplete` or refused response raises. **Check:** `OPENAI_API_KEY` must be set,
    then `try_paper.py record <link>` prints the record and its token cost. Read 2–3 records
-   against their papers and tune the prompt. **Learn:** Claude API.
+   against their papers and tune the prompt. **Learn:** OpenAI API.
 5. **storage.py.** Tests on a `tmp_path` db: save → load gives an equal `Paper`, `paper_exists`
    works, and `load_library` returns the expected columns. **Check:** `try_paper.py add <link>`
    twice; the second run says "already saved".

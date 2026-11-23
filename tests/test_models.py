@@ -75,6 +75,6 @@ def test_arxiv_url():
 
 
 def test_field_descriptions_reach_the_json_schema():
-    # These descriptions are what Claude sees when filling in a StudyRecord.
+    # These descriptions are what the LLM sees when filling in a StudyRecord.
     schema = StudyRecord.model_json_schema()
     assert "3 to 6" in schema["properties"]["key_concepts"]["description"]

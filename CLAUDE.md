@@ -14,13 +14,13 @@ or literature review.
    bar; papers already saved are skipped.
 2. Metadata (title, authors, date, category, abstract) from the arXiv API; text from the
    LaTeX source (common cases only).
-3. One Claude call per paper creates a study record (Pydantic): plain_summary,
+3. One LLM call per paper creates a study record (Pydantic): plain_summary,
    key_concepts, background, research_question, methods, data, key_results, limitations,
    keywords.
 4. Each paper is one row in SQLite.
 5. Library: TF-IDF search plus filters (category, year, author); paper page; CSV export.
-6. Concept glossary built from stored records (no extra Claude calls).
-7. Compare 2–4 papers side by side, plus one Claude call for a short written comparison
+6. Concept glossary built from stored records (no extra LLM calls).
+7. Compare 2–4 papers side by side, plus one LLM call for a short written comparison
    based on the stored records only.
 
 Out of scope for now: chat/Q&A, chunking, quote checking, PDF upload, deployment, accounts.
@@ -36,7 +36,7 @@ Out of scope for now: chat/Q&A, chunking, quote checking, PDF upload, deployment
 - Python 3.12
 - Streamlit (UI), SQLite via stdlib `sqlite3` (storage), pandas (tables, filters, CSV)
 - scikit-learn (TF-IDF + cosine similarity search)
-- Pydantic (paper schema), Claude API via the `anthropic` SDK, model `claude-sonnet-5-5`
+- Pydantic (paper schema), OpenAI API via the `openai` SDK, model `gpt-6-luna` (one constant in `llm.py`)
 - pytest (tests only)
 No other frameworks or services. Before adding any library or service, explain why it's
 needed and what the simpler alternative would be.
@@ -49,17 +49,17 @@ needed and what the simpler alternative would be.
 ## Conventions
 - Python only; type hints everywhere; Pydantic models for the paper schema
 - Small modules and small functions with clear names
-- Tests for parsing, LaTeX handling, storage, search and glossary logic; Claude calls are
+- Tests for parsing, LaTeX handling, storage, search and glossary logic; LLM calls are
   tested with a fake client
-- Secrets (API keys) live in environment variables and are never committed
+- Secrets (API keys, e.g. `OPENAI_API_KEY`) live in environment variables and are never committed
 
 ## Rules
-- Claude may only use the paper's own text (for study records) or the stored records (for
+- The LLM may only use the paper's own text (for study records) or the stored records (for
   comparisons). Prompts tell it to write "Not stated in the paper" rather than guess.
 - Each paper page links to the paper on arXiv. The app footer carries one note saying
   records are AI-generated summaries and should be checked against the paper.
 - Don't change the StudyRecord schema without asking me first.
-- If a Claude API call errors, check the anthropic SDK docs rather than guessing at a fix.
+- If an OpenAI API call errors, check the openai SDK docs rather than guessing at a fix.
 - Handle common cases only; list edge cases under "Known limitations" in PLAN.md.
 - Explain any non-obvious design choice in a short comment.
 - Follow PLAN.md one step at a time. I'm building this to learn, so after each step stop
