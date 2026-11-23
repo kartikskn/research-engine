@@ -282,3 +282,45 @@ persistence separate from the rest of the logic so it is testable with a tempora
   keeps the schema in one place (the Pydantic model), so adding a field doesn't need a table change.
 - *How do you prevent duplicates?* `arxiv_id` (without the version) is the primary key, and the add flow checks
   `paper_exists` first so the user sees "skipped" instead of an error.
+
+## Step 6: Adding papers (ingest + Add tab)
+**What it built:** The loop that turns pasted links into saved papers, and the Add tab that drives it. Paste links
+one per line, press the button, watch a progress bar, and get a results table showing which papers were added,
+skipped (already saved) or failed (and why). A live run with a four-line paste added two new papers (about $0.0055
+and $0.0036), skipped the duplicate and reported the junk line.
+
+**Code to know:**
+- `ingest.IngestResult`: a tiny dataclass: the id, a status (`added` / `skipped` / `failed`) and a message.
+- `ingest.add_papers(ids, client, db, on_progress)`: loops over the ids one at a time, calling `on_progress` before each
+  paper and once at the end, and returns the list of results.
+- `ingest._add_one`: skip if the id exists; otherwise fetch metadata, fetch and flatten the source, make the record, save.
+  Any exception becomes a `failed` result, so one bad paper never stops the batch.
+- `app.add_tab(db)`: text area, button, `st.progress` bar and results table. It creates the `OpenAI()` client only when
+  the button is pressed, so the app still opens without an API key and shows a clear error instead.
+- `tests/test_ingest.py`: fakes the network and the LLM with `monkeypatch`, and checks a batch with an added, a skipped and
+  two failed papers (not found, PDF-only), progress callbacks, and what gets saved.
+
+**Concepts:**
+- **Callback:** `on_progress` is a function passed in. `ingest.py` knows nothing about Streamlit; the Add tab passes a
+  function that moves the bar. That keeps the loop testable.
+- **`monkeypatch`:** a pytest fixture that swaps a function for a fake during one test, then restores it.
+- **`st.text_area`, `st.button`, `st.progress`, `st.dataframe`:** a widget returns its current value on each rerun;
+  `st.button` is `True` only on the rerun right after the click.
+
+**Design choices:**
+- Catch `Exception` per paper. Simpler alternative: stop on the first error. For a batch, partial success with a
+  clear report is more useful, and this is the one place a broad catch is right.
+- One paper at a time. Simpler alternative: parallel requests. Sequential respects arXiv's rate limit and is easier to follow.
+- Lines with no arXiv id are reported by the tab, not by `add_papers`, which only receives valid ids.
+- Known limitation: results are shown only for the rerun right after the click; refreshing the page clears the table.
+
+**Why it matters (interview):** It shows I keep orchestration logic separate from the UI and make failures visible instead of
+swallowing them, so a batch of 20 papers is safe to run.
+
+**Likely interview questions:**
+- *What happens if one paper in a batch fails?* It is recorded as `failed` with the reason, and the loop moves on. The user
+  sees the whole batch's outcome in one table.
+- *How do you test a loop that calls the network and an LLM?* I replace those calls with fakes using `monkeypatch`, so the
+  test checks the loop's logic (skip, fail, continue, save) and runs in under a second.
+- *Why a callback for progress instead of using Streamlit inside the loop?* So the loop has no Streamlit dependency and can
+  be tested and reused from a script. The UI just hands it a function.
