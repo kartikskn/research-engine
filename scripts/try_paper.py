@@ -3,18 +3,19 @@
 Usage:  python scripts/try_paper.py meta <arxiv link or id>
         python scripts/try_paper.py source <arxiv link or id>
         python scripts/try_paper.py record <arxiv link or id>   (costs a little: one LLM call)
-
-More commands (add) are added in later steps.
+        python scripts/try_paper.py add <arxiv link or id>      (saves the paper in the database)
 """
 
 import argparse
 import sys
 import urllib.error
+from datetime import datetime
 
 from openai import OpenAI
 
-from research_engine import llm
+from research_engine import llm, storage
 from research_engine.arxiv import fetch_metadata, fetch_source, flatten_source, parse_links
+from research_engine.models import Paper
 
 
 def first_id(link: str) -> str:
@@ -58,6 +59,20 @@ def cmd_record(link: str) -> None:
     print(f"\ntokens: {tokens_in:,} in, {tokens_out:,} out  ->  about ${cost:.4f}")
 
 
+def cmd_add(link: str) -> None:
+    arxiv_id = first_id(link)
+    db = storage.connect()
+    if storage.paper_exists(db, arxiv_id):
+        print(f"{arxiv_id} is already saved")
+        return
+    metadata = fetch_metadata(arxiv_id)
+    body = flatten_source(fetch_source(arxiv_id))
+    record, tokens_in, tokens_out = llm.make_study_record(metadata, body, OpenAI())
+    paper = Paper(metadata=metadata, record=record, added_at=datetime.now())
+    storage.save_paper(db, paper, body, llm.MODEL, tokens_in, tokens_out)
+    print(f"saved {arxiv_id}: {metadata.title}  ({tokens_in:,} tokens in, {tokens_out:,} out)")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -67,6 +82,8 @@ def main() -> None:
     source.add_argument("link", help="an arXiv link or id")
     record = commands.add_parser("record", help="make a study record with the LLM and print it")
     record.add_argument("link", help="an arXiv link or id")
+    add = commands.add_parser("add", help="make a record and save the paper in the database")
+    add.add_argument("link", help="an arXiv link or id")
     args = parser.parse_args()
 
     if args.command == "meta":
@@ -75,6 +92,8 @@ def main() -> None:
         cmd_source(args.link)
     elif args.command == "record":
         cmd_record(args.link)
+    elif args.command == "add":
+        cmd_add(args.link)
 
 
 if __name__ == "__main__":

@@ -241,3 +241,44 @@ checked status) and test that code without paying for or depending on the API.
 - *Why is the OpenAI client passed in?* So tests can pass a fake client and run offline, instantly and for free.
 - *What does structured output give you over asking for JSON?* The schema is enforced by the API, so I always
   get a valid `StudyRecord` or a clear failure, never half-valid JSON I have to repair.
+
+## Step 5: SQLite storage
+**What it built:** `storage.py`: one SQLite table with one row per paper, and the five functions the rest of the app
+needs. `try_paper.py add <link>` now fetches a paper, makes its record and saves it; running it a second time
+says "already saved" without calling the LLM. A real paper is now in `data/library.db` (git-ignored).
+
+**Code to know:**
+- `connect(path=None)`: opens the database (path from `LIBRARY_DB`, default `data/library.db`), creates the folder and
+  the `papers` table if needed, and returns the connection.
+- `paper_exists(db, id)`: a one-line `SELECT 1` lookup, used to skip papers already saved.
+- `save_paper(db, paper, latex_text, model, tokens_in, tokens_out)`: one `INSERT`. The record is stored as one JSON column.
+- `load_paper(db, id)`: rebuilds a `Paper` (metadata + `StudyRecord`) from a row.
+- `load_library(db)`: the whole table as a pandas DataFrame, newest first, with `authors` as lists, `record` as
+  `StudyRecord` objects, and a `year` column, so later steps can filter and search with plain pandas.
+- `tests/test_storage.py`: round trip, exists, duplicate refused, newest-first order, empty library, env var path.
+
+**Concepts:**
+- **`sqlite3` (standard library):** a database in one file. `?` placeholders pass values safely (no string-built SQL).
+  The `PRIMARY KEY` on `arxiv_id` makes duplicates impossible even if the code forgets to check.
+- **JSON in a column:** the record is saved with `model_dump_json()` and read back with `model_validate_json()`, so
+  Pydantic does the conversion both ways.
+- **`pd.read_sql`:** runs a query and returns a DataFrame; I then convert the JSON columns into Python objects.
+
+**Design choices:**
+- One table with the record as JSON. Simpler alternative: one column per record field. Nothing queries inside the
+  record, and JSON round-trips through Pydantic in one call.
+- Keep `latex_text` in the row. Simpler alternative: don't store it. It lets me redo a record without re-downloading.
+- Store token counts and the model name. Simpler alternative: skip them. They let me see what each paper cost.
+- Filtering happens in pandas, not SQL `WHERE`. The library is small and I know pandas.
+- Known limitation: no way to delete or edit a paper from the app.
+
+**Why it matters (interview):** It shows I can design a small schema, use parameterised SQL, and keep
+persistence separate from the rest of the logic so it is testable with a temporary database.
+
+**Likely interview questions:**
+- *Why SQLite?* It is a single file, needs no server, ships with Python, and a personal library is tiny. If real users
+  arrive I can move the same table to a hosted database.
+- *Why store the record as JSON instead of columns?* I never query inside it in SQL; pandas does the searching. JSON
+  keeps the schema in one place (the Pydantic model), so adding a field doesn't need a table change.
+- *How do you prevent duplicates?* `arxiv_id` (without the version) is the primary key, and the add flow checks
+  `paper_exists` first so the user sees "skipped" instead of an error.
