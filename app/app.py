@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from openai import OpenAI, OpenAIError
 
-from research_engine import arxiv, ingest, library, storage
+from research_engine import arxiv, ingest, library, llm, storage
 from research_engine.models import Paper
 
 
@@ -108,8 +108,36 @@ def glossary_tab(df: pd.DataFrame) -> None:
         st.markdown("\n".join(f"- {p['explanation']}  *(from {p['title']}, {p['arxiv_id']})*" for p in entry["papers"]))
 
 
-def compare_tab() -> None:
-    st.write("Compare: coming in step 10.")
+def compare_tab(db, df: pd.DataFrame) -> None:
+    if len(df) < 2:
+        st.info("Add at least two papers to compare them.")
+        return
+    titles = dict(zip(df["arxiv_id"], df["title"]))
+    chosen = st.multiselect(
+        "Choose 2 to 4 papers", list(titles), format_func=lambda i: f"{titles[i]} ({i})", max_selections=4
+    )
+    if len(chosen) < 2:
+        st.info("Pick at least two papers.")
+        return
+
+    papers = [storage.load_paper(db, arxiv_id) for arxiv_id in chosen]
+    for column, paper in zip(st.columns(len(papers)), papers):
+        with column:
+            render_record(paper, open_details=True)
+
+    st.subheader("Written comparison")
+    # The comparison is kept in session_state so it survives reruns. It isn't saved in the database:
+    # pressing the button again just makes a new one.
+    if st.button("Write comparison"):
+        try:
+            with st.spinner("Writing..."):
+                text = llm.write_comparison(papers, OpenAI())
+            st.session_state["comparison"] = (tuple(chosen), text)
+        except Exception as error:  # a missing key, a network problem or an unfinished reply
+            st.error(f"Could not write the comparison: {error}")
+    saved = st.session_state.get("comparison")
+    if saved and saved[0] == tuple(chosen):  # only show it while the same papers are selected
+        st.markdown(saved[1])
 
 
 def main() -> None:
@@ -132,7 +160,7 @@ def main() -> None:
     with glossary:
         glossary_tab(df)
     with compare:
-        compare_tab()
+        compare_tab(db, df)
 
     st.caption("Records are AI-generated summaries. Check them against the paper.")
 

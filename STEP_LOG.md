@@ -443,3 +443,44 @@ grouping logic in a small tested function.
   and instant, and it never contradicts what the Paper tab shows.
 - *What are the weaknesses?* It only merges exact matches after normalisation, so near-synonyms stay separate; a fuzzy match or an
   LLM merge step would fix that but add complexity and cost.
+
+## Step 10: Compare tab
+**What it built:** Pick 2 to 4 saved papers and see their records side by side, then press "Write comparison" to get a short
+written comparison (about 300 words: shared ideas, methods and data, results, which to read first). The comparison is written
+from the stored records only, never the paper text. A live run on two real papers cost about $0.0006 (3,225 tokens in, 609 out).
+
+**Code to know:**
+- `llm.COMPARISON_INSTRUCTIONS`: the prompt: use only these records, say so if the records don't say, four headings, about 300 words.
+- `llm.write_comparison(papers, client)`: builds one text from each paper's title, id, year and record JSON, makes a plain
+  `client.responses.create(...)` call, raises if the reply is unfinished, and returns `response.output_text`.
+- `app.compare_tab(db, df)`: a `multiselect` limited to 4, one `st.columns` column per paper using `render_record(open_details=True)`,
+  and the button. The OpenAI client is created only when the button is pressed.
+- Two new tests: the prompt contains the records (and not even the abstract) and the call is not structured; an unfinished reply raises.
+
+**Concepts:**
+- **`st.session_state`:** a dictionary that survives reruns. Because every click reruns the script, the comparison text is kept there;
+  otherwise it would vanish the moment you touched another widget.
+- **`st.columns`:** lays out widgets side by side; `with column:` puts the following calls inside that column.
+- **Plain vs structured replies:** the record needs a rigid schema (`responses.parse`); the comparison is free text
+  (`responses.create` and `output_text`), so there is no schema.
+
+**Design choices:**
+- Send records, not paper text. Simpler alternative: send the LaTeX of every paper. Records are short and the call is ~100x cheaper
+  (cents become fractions of a cent), and it keeps the comparison grounded in what the Paper tab already shows.
+- Not stored in the database. Simpler alternative: a `comparisons` table. One fewer table; pressing the button again regenerates it for a
+  fraction of a cent.
+- The saved comparison remembers which papers it was for, and is only shown while that same selection is chosen.
+- Show errors from the call in the page (`st.error`) rather than a traceback.
+- Known limitation: the comparison is only as good as the records, and the model can stretch to find "shared ideas" between unrelated
+  papers (my live test did this a little).
+
+**Why it matters (interview):** It shows I can keep a second LLM feature cheap and grounded by feeding it structured data I already
+have, and handle Streamlit's rerun model with `session_state`.
+
+**Likely interview questions:**
+- *Why compare from records instead of the full papers?* It's far cheaper and faster, and the records already hold the methods, data and
+  results. It also keeps the comparison consistent with what the user has read in the app.
+- *How do you stop the comparison inventing things?* The prompt says to use only the supplied records and to say when they don't contain
+  something. It can still over-interpret, so the footer asks users to check against the papers.
+- *Why does the comparison disappear when I change the selection?* It's stored with the list of papers it was written for; if the selection
+  differs, showing it would be misleading.

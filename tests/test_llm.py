@@ -16,10 +16,11 @@ class FakeClient:
             incomplete_details=None,
             output_parsed=make_record(),
             usage=SimpleNamespace(input_tokens=1200, output_tokens=340),
+            output_text="THE COMPARISON",
         )
         defaults.update(response_fields)
         self.calls = []
-        self.responses = SimpleNamespace(parse=self._parse)
+        self.responses = SimpleNamespace(parse=self._parse, create=self._parse)
         self._response = SimpleNamespace(**defaults)
 
     def _parse(self, **kwargs):
@@ -87,3 +88,29 @@ def test_refusal_raises():
     client = FakeClient(output_parsed=None)
     with pytest.raises(ValueError, match="refused"):
         llm.make_study_record(make_metadata(), "x", client)
+
+
+# ---- write_comparison ----------------------------------------------------------------------
+
+
+def test_comparison_sends_only_the_stored_records(paper_factory):
+    papers = [
+        paper_factory(arxiv_id="2101.00001", title="First paper", summary="SUMMARY ONE"),
+        paper_factory(arxiv_id="2102.00002", title="Second paper", summary="SUMMARY TWO"),
+    ]
+    client = FakeClient()
+    text = llm.write_comparison(papers, client)
+
+    assert text == "THE COMPARISON"
+    prompt = client.calls[0]["input"]
+    assert "PAPER 1: First paper" in prompt and "PAPER 2: Second paper" in prompt
+    assert "SUMMARY ONE" in prompt and "SUMMARY TWO" in prompt  # the records are in the prompt
+    assert "Abstract." not in prompt  # nothing but the records: not even the abstract is sent
+    assert "text_format" not in client.calls[0]  # a plain text reply, not a structured one
+    assert "ONLY these records" in client.calls[0]["instructions"]
+
+
+def test_comparison_incomplete_response_raises(paper_factory):
+    client = FakeClient(status="incomplete", incomplete_details=SimpleNamespace(reason="max_output_tokens"))
+    with pytest.raises(ValueError, match="did not finish"):
+        llm.write_comparison([paper_factory(), paper_factory()], client)
