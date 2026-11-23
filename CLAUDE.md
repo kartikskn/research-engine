@@ -1,5 +1,5 @@
 # Research Learning Library
-'''
+
 ## What this is
 A simple learning library: I add research papers from arXiv and it helps me understand,
 connect and compare them. A humble student project that I must be able to explain end
@@ -74,4 +74,3 @@ needed and what the simpler alternative would be.
 - After I confirm a step's check passes, make a git commit named
   "step N: <short description>".
 - After each step's commit, push to GitHub.
-'''

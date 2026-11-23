@@ -1,0 +1,33 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/QAbzvfFR6OVD0k9/viJXeKLx0o4</id>
+  <title>arXiv Query: search_query=&amp;id_list=2611.27274&amp;start=0&amp;max_results=10</title>
+  <updated>2026-11-23T14:50:30Z</updated>
+  <link href="https://arxiv.org/api/query?search_query=&amp;start=0&amp;max_results=10&amp;id_list=2611.27274" type="application/atom+xml"/>
+  <opensearch:itemsPerPage>10</opensearch:itemsPerPage>
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/2611.27274v1</id>
+    <title>Nonlinear Shrinkage for Higher Moments Estimation in Large Portfolios</title>
+    <updated>2026-11-20T08:15:49Z</updated>
+    <link href="https://arxiv.org/abs/2611.27274v1" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2611.27274v1" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Portfolio risk is not limited to the variance of returns. The moments of portfolio returns depend directly on the covariance matrix and higher-order co-dependences (coskewness, cokurtosis, etc.). In practice, however, these objects are extremely noisy, especially for large portfolios. Here we introduce filtering methods based on tensor decompositions that extend cross-validated covariance cleaning and the Average Oracle methodology to even-order co-moment tensors. Using returns on historical Russell 1000 constituents, we find that the proposed filters improve out-of-sample estimation accuracy relative to sample estimators, both for correlation and cokurtosis tensors, as measured by relative squared Frobenius errors. These improvements translate into lower relative errors on portfolio volatility and kurtosis, and into lower out-of-sample volatility and kurtosis when the portfolio objective penalizes both variance and the fourth moment.</summary>
+    <category term="q-fin.PM" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="q-fin.RM" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="q-fin.ST" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2026-11-20T08:15:49Z</published>
+    <arxiv:comment>30 pages, 6 figures, including Supplementary Information. An earlier conference version circulated under the title "Higher-Order Moment Shrinkage for Risk Assessment"</arxiv:comment>
+    <arxiv:primary_category term="q-fin.PM"/>
+    <author>
+      <name>Paul Ruelloux</name>
+    </author>
+    <author>
+      <name>Christian Bongiorno</name>
+    </author>
+    <author>
+      <name>Damien Challet</name>
+    </author>
+  </entry>
+</feed>

@@ -91,3 +91,51 @@ than passing loose dictionaries around. That makes the Claude output checkable.
   an error. The paper is reported as failed in the Add tab and the rest of the batch continues.
 - *Why does the metadata not come from Claude?* arXiv already has the exact title, authors and
   date. Asking a model risks invented details, and the filters need exact values.
+
+## Step 2: arXiv links and metadata
+**What it built:** The first half of `arxiv.py`: turning pasted text into arXiv ids, and turning an
+id into a `PaperMetadata` by asking the arXiv API. A small command-line script lets me try it on a
+real paper before any UI exists.
+
+**Code to know:**
+- `parse_links(text)`: reads one link per line and returns `(ids, bad_lines)`. A single regex finds
+  an id like `2310.01234` in abs links, pdf links or bare ids, and drops any `v2` suffix and
+  duplicates. Lines with no id are returned so the Add tab can report them as failed.
+- `parse_metadata(xml_text)`: reads one entry from arXiv's Atom (XML) response into a
+  `PaperMetadata`. Pure function with no network, so it is easy to test. Raises `ValueError`
+  ("paper not found") when there is no entry.
+- `fetch_metadata(id)`: builds the API URL, calls `_get`, and passes the XML to `parse_metadata`.
+- `_get(url)`: one HTTP GET with `urllib`, a generic User-Agent, a timeout, then a 3 second sleep
+  so a batch of papers stays within arXiv's rate limit.
+- `scripts/try_paper.py meta <link>`: prints the title, authors, date, category and abstract.
+- `tests/fixtures/atom_sample.xml`: a real saved API response, so tests don't need the internet.
+
+**Concepts:**
+- **Atom feed / `xml.etree`:** the arXiv API replies with XML. `ElementTree` is in the standard
+  library; tags carry a namespace in curly braces (`{http://www.w3.org/2005/Atom}title`).
+- **Regular expression lookarounds:** `(?<!\d)` and `(?!\d)` mean "not preceded or followed by a
+  digit", so a too-long number such as `2310.012345` is rejected instead of half-matched.
+- **Separating network from parsing:** only `_get` touches the internet. Everything else can be
+  tested offline with the saved response.
+
+**Design choices:**
+- `urllib` from the standard library. Simpler alternative: the `requests` library. `urllib` is
+  enough for two GET calls and keeps the dependency list as planned.
+- Primary category from `arxiv:primary_category`, not the first `<category>`. The first listed
+  category is not always the primary one (the fixture paper shows this), and filters need the
+  right one.
+- `parse_links` returns bad lines instead of raising. Simpler alternative: raise on the first bad
+  line. One bad line shouldn't stop a pasted batch.
+- Only new-style ids. Simpler alternative: also parse `math/0601001`. Rare in recent papers, so it
+  is listed under known limitations.
+
+**Why it matters (interview):** It shows I wrote code that talks to an external API politely (rate
+limit, User-Agent) and tested it without depending on the network.
+
+**Likely interview questions:**
+- *How do you avoid hammering arXiv?* Every request is followed by a 3 second sleep, and papers
+  are processed one at a time, which matches arXiv's guidance of one request per 3 seconds.
+- *How do you test code that calls an API?* I split fetching from parsing and saved a real
+  response as a fixture. Tests check the parser on that file and never touch the network.
+- *Why not take the metadata from Claude?* arXiv already has it exactly, and the filters on
+  category, year and author depend on exact values.
