@@ -2,14 +2,18 @@
 
 Usage:  python scripts/try_paper.py meta <arxiv link or id>
         python scripts/try_paper.py source <arxiv link or id>
+        python scripts/try_paper.py record <arxiv link or id>   (costs a little: one LLM call)
 
-More commands (record, add) are added in later steps.
+More commands (add) are added in later steps.
 """
 
 import argparse
 import sys
 import urllib.error
 
+from openai import OpenAI
+
+from research_engine import llm
 from research_engine.arxiv import fetch_metadata, fetch_source, flatten_source, parse_links
 
 
@@ -44,6 +48,16 @@ def cmd_source(link: str) -> None:
     print(body[:1500])
 
 
+def cmd_record(link: str) -> None:
+    arxiv_id = first_id(link)
+    metadata = fetch_metadata(arxiv_id)
+    body = flatten_source(fetch_source(arxiv_id))
+    record, tokens_in, tokens_out = llm.make_study_record(metadata, body, OpenAI())
+    print(record.model_dump_json(indent=2))
+    cost = tokens_in * 0.10 / 1_000_000 + tokens_out * 0.50 / 1_000_000  # gpt-6-luna prices
+    print(f"\ntokens: {tokens_in:,} in, {tokens_out:,} out  ->  about ${cost:.4f}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     commands = parser.add_subparsers(dest="command", required=True)
@@ -51,12 +65,16 @@ def main() -> None:
     meta.add_argument("link", help="an arXiv link or id")
     source = commands.add_parser("source", help="fetch the LaTeX source and print the start of the body")
     source.add_argument("link", help="an arXiv link or id")
+    record = commands.add_parser("record", help="make a study record with the LLM and print it")
+    record.add_argument("link", help="an arXiv link or id")
     args = parser.parse_args()
 
     if args.command == "meta":
         cmd_meta(args.link)
     elif args.command == "source":
         cmd_source(args.link)
+    elif args.command == "record":
+        cmd_record(args.link)
 
 
 if __name__ == "__main__":

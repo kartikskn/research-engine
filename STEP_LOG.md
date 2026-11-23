@@ -198,3 +198,46 @@ small, individually tested functions rather than one big parser.
   error, and the Add tab will show that paper as failed. PDF upload is out of scope for v1.
 - *Why read the tar in memory?* Archives come from the internet, so I don't want to extract files from them to
   disk. Reading members into strings avoids path tricks entirely.
+
+## Step 4: The study record (first LLM call)
+**What it built:** `llm.make_study_record()`, which sends one paper to the model and gets back a validated
+`StudyRecord`, plus the token counts. `try_paper.py record <link>` runs it on a real paper. On paper
+2611.27274 it returned a sensible record (5 concepts, 6 methods, 6 results) for 18,167 input and
+1,576 output tokens, about $0.0026, in roughly 20 seconds.
+
+**Code to know:**
+- `MODEL = "gpt-6-luna"`: the single constant that names the model. `MAX_OUTPUT_TOKENS = 16000`.
+- `RECORD_INSTRUCTIONS`: the system prompt. Use only the paper, write "Not stated in the paper" rather than
+  guess, explain plainly.
+- `make_study_record(metadata, latex_text, client)`: builds the prompt (title, authors, abstract, then the body
+  inside `<paper>` tags), calls `client.responses.parse(...)`, checks the status, and returns
+  `(record, input_tokens, output_tokens)`.
+- `tests/test_llm.py`: a `FakeClient` that records the call and returns a canned response, so the tests check the
+  prompt, the model constant, the schema, and the two failure cases without the network.
+
+**Concepts:**
+- **Structured outputs:** `text_format=StudyRecord` makes the API constrain the reply to that Pydantic model's JSON
+  schema, so `response.output_parsed` is already a valid `StudyRecord`. No manual JSON parsing.
+- **Reasoning tokens:** the model thinks before answering and those tokens are billed as output and count
+  against `max_output_tokens`, so the limit is set high (16,000) to avoid cutting off a long paper.
+- **Dependency injection:** the client is a parameter, not created inside the function. Tests pass a fake;
+  the app passes the real `OpenAI()`.
+
+**Design choices:**
+- Send the whole paper body. Simpler alternative: only the abstract. The abstract doesn't state methods, data or
+  limitations, and the full paper costs a fraction of a cent on this model.
+- Return a plain tuple `(record, tokens_in, tokens_out)`. Simpler alternative: a custom result class. A tuple is
+  enough for three values used in one place.
+- Raise `ValueError` for an unfinished or refused response; the Add tab will show it as "failed".
+- Default reasoning effort, no `temperature`. Simpler alternative: tune both. Not needed yet.
+
+**Why it matters (interview):** It shows I can get reliable, typed data out of an LLM (schema-constrained output,
+checked status) and test that code without paying for or depending on the API.
+
+**Likely interview questions:**
+- *How do you stop the model inventing things?* The prompt says to use only the paper text and write "Not stated
+  in the paper" otherwise, and the app footer tells users to check records against the paper. I also spot-check
+  10 records by hand at the end and count mistakes.
+- *Why is the OpenAI client passed in?* So tests can pass a fake client and run offline, instantly and for free.
+- *What does structured output give you over asking for JSON?* The schema is enforced by the API, so I always
+  get a valid `StudyRecord` or a clear failure, never half-valid JSON I have to repair.

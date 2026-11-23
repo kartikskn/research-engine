@@ -49,7 +49,7 @@ COMPARE
 
 | Choice | Simpler alternative | Why this one |
 |---|---|---|
-| Send the LLM the whole LaTeX body | Send only the abstract (cheaper) | The abstract rarely states methods, data or limitations. The whole paper costs roughly $0.01 on gpt-6-luna ($0.10 / $0.50 per 1M input / output tokens), once per paper |
+| Send the LLM the whole LaTeX body | Send only the abstract (cheaper) | The abstract rarely states methods, data or limitations. The whole paper costs roughly $0.003-0.01 on gpt-6-luna ($0.10 / $0.50 per 1M input / output tokens), once per paper |
 | One paper at a time, with a progress bar | Run in parallel | Easy to follow and debug. arXiv asks for ≤1 request per 3 s anyway |
 | `ingest.add_papers(ids, on_progress)` callback | Put the loop inside the Add tab | The loop can be tested without Streamlit. The tab just passes a function that moves the bar |
 
@@ -244,7 +244,7 @@ CREATE TABLE IF NOT EXISTS papers (
     (ran out of tokens or was filtered) or when `output_parsed` is empty (the model refused).
   - Don't pass `temperature`: the newest OpenAI models don't need it. The model thinks a little
     before answering, and those reasoning tokens count as output, hence the generous `max_output_tokens`.
-  - Rough cost: ~$0.01 per paper record, ~$0.005 per comparison (measured values are in STEP_LOG.md).
+  - Rough cost: ~$0.003-0.01 per paper record, ~$0.002 per comparison (measured values are in STEP_LOG.md).
   - Testability: both functions take `client` as an argument, so tests pass a fake object and
     never call the API.
 
