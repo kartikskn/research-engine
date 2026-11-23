@@ -7,6 +7,7 @@ import streamlit as st
 from openai import OpenAI, OpenAIError
 
 from research_engine import arxiv, ingest, storage
+from research_engine.models import Paper
 
 
 def add_tab(db) -> None:
@@ -34,12 +35,45 @@ def add_tab(db) -> None:
     st.dataframe(pd.DataFrame([asdict(r) for r in bad + results]), hide_index=True)
 
 
+def bullets(items: list[str]) -> str:
+    return "\n".join(f"- {item}" for item in items)
+
+
+def render_record(paper: Paper, open_details: bool = False) -> None:
+    """Show one paper: plain summary first, then concepts and background, then the detailed record."""
+    meta, record = paper.metadata, paper.record
+    authors = ", ".join(meta.authors[:6]) + (" et al." if len(meta.authors) > 6 else "")
+    st.subheader(meta.title)
+    st.caption(f"{authors} · {meta.published} · {meta.primary_category}")
+    st.markdown(f"[Read the paper on arXiv]({meta.arxiv_url})")
+
+    st.markdown("**In plain words**")
+    st.write(record.plain_summary)
+    st.markdown("**Key concepts**")
+    st.markdown("\n".join(f"- **{c.term}**: {c.explanation}" for c in record.key_concepts))
+    st.markdown("**Background: what to know first**")
+    st.markdown(bullets(record.background))
+
+    with st.expander("Detailed record", expanded=open_details):
+        st.markdown(f"**Research question**\n\n{record.research_question}")
+        st.markdown("**Methods**\n\n" + bullets(record.methods))
+        st.markdown(f"**Data**\n\n{record.data}")
+        st.markdown("**Key results**\n\n" + bullets(record.key_results))
+        st.markdown("**Limitations**\n\n" + bullets(record.limitations))
+        st.markdown("**Keywords**\n\n" + ", ".join(record.keywords))
+
+
 def library_tab() -> None:
     st.write("Library: coming in step 8.")
 
 
-def paper_tab() -> None:
-    st.write("Paper: coming in step 7.")
+def paper_tab(db, df: pd.DataFrame) -> None:
+    if df.empty:
+        st.info("No papers yet. Add some in the Add tab.")
+        return
+    titles = dict(zip(df["arxiv_id"], df["title"]))
+    arxiv_id = st.selectbox("Paper", options=list(titles), format_func=lambda i: f"{titles[i]} ({i})")
+    render_record(storage.load_paper(db, arxiv_id))
 
 
 def glossary_tab() -> None:
@@ -62,10 +96,11 @@ def main() -> None:
     # runs each time (st.tabs only changes the layout), so keep tab functions cheap.
     with add:
         add_tab(db)
+    df = storage.load_library(db)  # loaded after the Add tab, so a paper just added shows up at once
     with library:
         library_tab()
     with paper:
-        paper_tab()
+        paper_tab(db, df)
     with glossary:
         glossary_tab()
     with compare:

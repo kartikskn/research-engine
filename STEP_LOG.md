@@ -324,3 +324,42 @@ swallowing them, so a batch of 20 papers is safe to run.
   test checks the loop's logic (skip, fail, continue, save) and runs in under a second.
 - *Why a callback for progress instead of using Streamlit inside the loop?* So the loop has no Streamlit dependency and can
   be tested and reused from a script. The UI just hands it a function.
+
+## Step 7: Paper tab and `render_record`
+**What it built:** The Paper tab: pick a saved paper from a dropdown and read its study record. The page shows the title,
+authors, date, category and a link to the paper on arXiv, then the plain summary first, key concepts, background, and the
+detailed record (research question, methods, data, results, limitations, keywords) inside an expander. I checked it headlessly
+against all three real saved papers and an empty library.
+
+**Code to know:**
+- `render_record(paper, open_details=False)`: the one function that draws a paper. The Compare tab will reuse it.
+- `bullets(items)`: turns a list of strings into a markdown bullet list.
+- `paper_tab(db, df)`: shows "No papers yet" for an empty library; otherwise a `selectbox` of titles, then
+  `storage.load_paper` and `render_record`.
+- `main()` now loads the library DataFrame once, right after the Add tab runs, so a paper added in this same click
+  appears in the dropdown immediately.
+
+**Concepts:**
+- **`st.selectbox` with `format_func`:** the options are the arXiv ids (stable values) and `format_func` turns each into
+  a readable label with the title.
+- **`st.expander`:** a collapsible section. `expanded=True` opens it; Compare will use that.
+- **Markdown math:** `st.markdown` renders `$...$` as maths, so formulas the LLM writes display properly.
+- **Headless UI testing (`AppTest`):** Streamlit can run the app script without a browser, set widget values and
+  inspect what was drawn. I use it for my own checks; it is not part of the committed test suite.
+
+**Design choices:**
+- Read the full `Paper` from the database with `load_paper` instead of building it from a DataFrame row. Simpler
+  alternative: convert the row. A query by id is one line and already tested.
+- Show at most six authors then "et al." so a large collaboration doesn't fill the page.
+- The Library can't jump to this tab (`st.tabs` can't be switched from code), so you pick the paper here. Known limitation.
+
+**Why it matters (interview):** It shows I turned structured data into a readable page, putting the most useful part (the
+plain summary) first, and reused one rendering function rather than copying it.
+
+**Likely interview questions:**
+- *Why does the page put the plain summary first?* The app is for learning. A student wants the gist before the details,
+  and the detailed record is one click away.
+- *How do you test a Streamlit page without a browser?* `AppTest` runs the script headlessly and lets me read the widgets
+  and text it produced. The real logic lives in `research_engine/`, which has normal pytest tests.
+- *Why is the app's data loaded after the Add tab?* The script runs top to bottom on every click. If I loaded the library
+  first, a paper added in this click wouldn't show until the next rerun.
