@@ -28,7 +28,7 @@ def add_tab(db) -> None:
     bar = st.progress(0.0)
 
     def show_progress(done: int, total: int, current_id: str) -> None:
-        bar.progress(done / total, text=f"Adding {current_id} ({done + 1} of {total})" if current_id else "Done")
+        bar.progress(done / max(total, 1), text=f"Adding {current_id} ({done + 1} of {total})" if current_id else "Done")
 
     results = ingest.add_papers(ids, client, db, show_progress)
     bad = [ingest.IngestResult(line, "failed", "no arXiv id found in this line") for line in bad_lines]

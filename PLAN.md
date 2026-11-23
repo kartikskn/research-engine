@@ -83,17 +83,17 @@ research-engine/
 `app/app.py` outline:
 ```python
 def render_record(paper: Paper) -> None: ...    # used by the Paper and Compare tabs
-def add_tab(db, client) -> None: ...
+def add_tab(db) -> None: ...                   # creates the OpenAI client only when the button is pressed
 def library_tab(df) -> None: ...
-def paper_tab(df) -> None: ...
+def paper_tab(db, df) -> None: ...
 def glossary_tab(df) -> None: ...
-def compare_tab(df, client) -> None: ...
+def compare_tab(db, df) -> None: ...
 
 def main() -> None:
     st.set_page_config(page_title="Research Library", layout="wide")
-    db, client = open_db(), OpenAI()
+    db = storage.connect()
     add, lib, paper, gloss, comp = st.tabs(["Add", "Library", "Paper", "Glossary", "Compare"])
-    with add:   add_tab(db, client)
+    with add:   add_tab(db)
     df = storage.load_library(db)               # loaded after Add, so new papers show up at once
     with lib:   library_tab(df)
     ...
@@ -368,3 +368,13 @@ After each step I'll stop and explain what changed and why before moving on.
   the paper in the Paper tab.
 - Records aren't editable or deletable in the UI, and comparisons aren't saved.
 - Records are AI-generated and may contain mistakes (hence the footer note).
+- Found in the end-to-end pass: the year slider is hidden when every paper is from one year.
+- Found in the end-to-end pass: a search made only of stop words ("the of") matches nothing.
+- Found in the end-to-end pass: the comparison can over-link unrelated papers ("shared ideas") because it only sees the records.
+- Not tested on a real PDF-only paper (the PDF-only path is covered by a fake in the tests).
+- Each Streamlit rerun opens a fresh SQLite connection (cheap for a local file, never explicitly closed).
+- Records are checked by hand only (see "Spot-check" below).
+
+## Spot-check (to do by hand)
+Read 10 records against their papers and note how many contain a mistake (an invented detail, a wrong method or
+result, a misattributed limitation) and what kind. Result: ___ of 10 had a mistake. Notes: ___

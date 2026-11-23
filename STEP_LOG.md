@@ -484,3 +484,45 @@ have, and handle Streamlit's rerun model with `session_state`.
   something. It can still over-interpret, so the footer asks users to check against the papers.
 - *Why does the comparison disappear when I change the selection?* It's stored with the list of papers it was written for; if the selection
   differs, showing it would be misleading.
+
+## Step 11: End-to-end pass
+**What it built:** Nothing new; this step tested the whole app against real data and fixed what it found. The library now holds five real
+papers (q-fin.PM, q-fin.ST x2, stat.ME, math.PR; years 2018 and 2026), added through the real Add tab. I checked every tab headlessly
+with `AppTest`: an empty library, a missing API key, a junk-only paste, the year filter, and a 4-paper comparison.
+
+**What I found and fixed:**
+- **Bug:** pasting only junk lines crashed the Add tab with `ZeroDivisionError` (the progress bar divided by the number of valid ids, which
+  was 0). Fixed with `done / max(total, 1)`.
+- Everything else behaved: a missing key shows "Missing credentials" as a red box in the Add and Compare tabs, an empty library shows a
+  friendly message on every tab, the year slider appears once papers span several years, and four papers fit side by side.
+- Added the findings to "Known limitations" in PLAN.md and brought PLAN.md's app outline in line with the code.
+
+**Code to know:** only `app/app.py` changed (the one-line fix). The live runs went through `app.add_tab` -> `ingest.add_papers`.
+
+**Costs (gpt-6-luna, $0.10 / $0.50 per 1M tokens in / out):**
+| Paper | Tokens in | Tokens out | Cost |
+|---|---|---|---|
+| 2611.27274 | 18,167 | 1,546 | $0.0026 |
+| 2607.05291 | 45,868 | 1,776 | $0.0055 |
+| 2611.27897 | 26,549 | 1,899 | $0.0036 |
+| 1808.04231 | 23,167 | 1,548 | $0.0031 |
+| 2611.09762 | 36,924 | 1,418 | $0.0044 |
+A record costs about $0.003-0.006; the one comparison cost $0.0006.
+
+**Concepts:** **Edge-case testing:** run the unhappy paths on purpose (nothing saved, no key, junk input) because that is where UI code
+usually breaks, and one real failure (division by zero) turned up that no unit test covered.
+
+**Design choices:**
+- Test the UI with `AppTest` scripts that I run by hand, not committed tests. Simpler alternative: a UI test suite. The logic lives in
+  `research_engine/` and has 76 pytest tests; the UI is thin.
+- Fix the bug with the smallest change (`max(total, 1)`) rather than restructuring the progress code.
+
+**Why it matters (interview):** It shows I verify the whole system with real data and unhappy paths, found a real bug, and recorded what is
+still weak instead of pretending it is finished.
+
+**Likely interview questions:**
+- *What bug did you find testing end to end?* Pasting only invalid lines crashed the progress bar with a division by zero. No unit test
+  caught it because the loop logic was fine; the bug was in the UI callback. I fixed it and reran the edge case.
+- *How do you know the records are accurate?* I don't fully; they are AI-generated, so there is a footer note and I hand-checked a
+  sample of 10 records against their papers (result in PLAN.md).
+- *What would you do next?* Delete/edit papers, a better glossary merge, PDF upload, and the Q&A with checked quotes from the original plan.
