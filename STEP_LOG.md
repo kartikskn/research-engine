@@ -406,3 +406,40 @@ pure, tested functions with the UI as a thin layer.
 - *Why TF-IDF rather than embeddings?* The library is small, TF-IDF is free, instant and explainable, and technical terms like
   "GARCH" are exactly the sort of distinctive words it handles well. Embeddings would add a service and cost.
 - *Why refit the vectorizer on each search?* For tens or hundreds of papers it's milliseconds, so I avoid cache invalidation bugs.
+
+## Step 9: Glossary tab
+**What it built:** A page listing every key concept across the library, A to Z, each with the explanation from every paper that
+uses it (and which paper). A text box filters the list. It is built entirely from the stored records, so it makes no LLM calls.
+On the three real papers it lists 18 concepts.
+
+**Code to know:**
+- `normalise_term(term)`: lower-cases (using `casefold`) and collapses whitespace, so "Realised  Volatility" and "realised volatility"
+  are the same key.
+- `build_glossary(df)`: loops over the papers and their key concepts, collects them in a dict keyed by the normalised term, and
+  returns a sorted list of `{"term": ..., "papers": [{arxiv_id, title, explanation}, ...]}`.
+- `app.glossary_tab(df)`: a text filter and one heading per term with a bullet per paper.
+- Tests: concepts come out A to Z, the same concept in two papers becomes one entry listing both, empty library, normalisation.
+
+**Concepts:**
+- **`dict.setdefault`:** returns the existing value for a key, or inserts a default and returns that. It lets me "add to the
+  entry for this term, creating it if needed" in one line.
+- **`str.casefold`:** a stronger, language-aware `lower()` for case-insensitive comparison.
+
+**Design choices:**
+- Compute the glossary on the fly. Simpler alternative: a separate `concepts` table. There is nothing to keep in sync and
+  adding or deleting a paper needs no extra code.
+- Return plain lists and dicts rather than a DataFrame: it is a nested structure (a term has many papers), which a flat table
+  represents awkwardly.
+- Keep each paper's own explanation instead of merging them, so you can compare how different papers describe the same idea.
+- Known limitation: different spellings of one idea ("GARCH" vs "GARCH(1,1)") stay separate entries.
+
+**Why it matters (interview):** It shows a feature built from data the app already stores (no extra cost or service), with the
+grouping logic in a small tested function.
+
+**Likely interview questions:**
+- *How do you group the same concept across papers?* I normalise each term (casefold and collapse whitespace) and use it as a
+  dictionary key; papers whose terms normalise to the same key land in the same entry.
+- *Why not ask the LLM to build the glossary?* Every record already has the concepts and explanations, so reading them is free
+  and instant, and it never contradicts what the Paper tab shows.
+- *What are the weaknesses?* It only merges exact matches after normalisation, so near-synonyms stay separate; a fuzzy match or an
+  LLM merge step would fix that but add complexity and cost.

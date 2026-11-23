@@ -79,3 +79,24 @@ def to_csv_frame(df: pd.DataFrame) -> pd.DataFrame:
             }
         )
     return pd.DataFrame(rows, columns=CSV_COLUMNS)
+
+
+def normalise_term(term: str) -> str:
+    """'Realised  Volatility' and 'realised volatility' count as the same concept."""
+    return " ".join(term.casefold().split())
+
+
+def build_glossary(df: pd.DataFrame) -> list[dict]:
+    """Every key concept in the library, A to Z, each with the papers that use it.
+
+    Each entry is {"term": ..., "papers": [{"arxiv_id", "title", "explanation"}, ...]}.
+    Built from the stored records, so it costs no LLM calls.
+    """
+    entries: dict[str, dict] = {}
+    for _, paper in df.iterrows():
+        for concept in paper["record"].key_concepts:
+            entry = entries.setdefault(normalise_term(concept.term), {"term": concept.term, "papers": []})
+            entry["papers"].append(
+                {"arxiv_id": paper["arxiv_id"], "title": paper["title"], "explanation": concept.explanation}
+            )
+    return [entries[key] for key in sorted(entries)]

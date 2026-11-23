@@ -95,8 +95,17 @@ def paper_tab(db, df: pd.DataFrame) -> None:
     render_record(storage.load_paper(db, arxiv_id))
 
 
-def glossary_tab() -> None:
-    st.write("Glossary: coming in step 9.")
+def glossary_tab(df: pd.DataFrame) -> None:
+    glossary = library.build_glossary(df)
+    if not glossary:
+        st.info("No concepts yet. Add some papers in the Add tab.")
+        return
+    needle = st.text_input("Filter concepts").strip().lower()
+    shown = [entry for entry in glossary if needle in entry["term"].lower()]
+    st.write(f"{len(shown)} of {len(glossary)} concepts")
+    for entry in shown:
+        st.markdown(f"#### {entry['term']}")
+        st.markdown("\n".join(f"- {p['explanation']}  *(from {p['title']}, {p['arxiv_id']})*" for p in entry["papers"]))
 
 
 def compare_tab() -> None:
@@ -121,7 +130,7 @@ def main() -> None:
     with paper:
         paper_tab(db, df)
     with glossary:
-        glossary_tab()
+        glossary_tab(df)
     with compare:
         compare_tab()
 

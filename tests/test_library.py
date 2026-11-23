@@ -94,3 +94,45 @@ def test_csv_text_round_trips_through_pandas(library_df):
 def test_csv_frame_of_an_empty_library_keeps_the_columns(library_df):
     frame = library.to_csv_frame(library_df.iloc[0:0])
     assert frame.empty and list(frame.columns) == library.CSV_COLUMNS
+
+
+# ---- glossary ------------------------------------------------------------------------------
+
+
+def test_glossary_lists_every_concept_a_to_z(library_df):
+    glossary = library.build_glossary(library_df)
+    assert [entry["term"] for entry in glossary] == ["cointegration", "realised volatility", "shrinkage"]
+    entry = glossary[1]
+    assert entry["papers"] == [
+        {
+            "arxiv_id": "2101.00001",
+            "title": "Realised volatility forecasting with HAR models",
+            "explanation": "Volatility measured from intraday returns.",
+        }
+    ]
+
+
+def test_same_concept_in_two_papers_is_one_entry_listing_both(paper_factory):
+    from research_engine import storage
+
+    db = storage.connect(":memory:")
+    first = paper_factory(arxiv_id="2101.00001", title="One", concepts=(("Realised Volatility", "Explanation one."),))
+    second = paper_factory(arxiv_id="2102.00002", title="Two", concepts=(("realised   volatility", "Explanation two."),))
+    for paper in (first, second):
+        storage.save_paper(db, paper, "LATEX", "test-model", 1, 1)
+
+    glossary = library.build_glossary(storage.load_library(db))
+
+    assert len(glossary) == 1
+    assert {p["arxiv_id"]: p["explanation"] for p in glossary[0]["papers"]} == {
+        "2101.00001": "Explanation one.",
+        "2102.00002": "Explanation two.",
+    }
+
+
+def test_glossary_of_an_empty_library(library_df):
+    assert library.build_glossary(library_df.iloc[0:0]) == []
+
+
+def test_normalise_term():
+    assert library.normalise_term("  GARCH(1,1)   Model ") == "garch(1,1) model"
