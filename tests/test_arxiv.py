@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from research_engine.arxiv import parse_links, parse_metadata
+from research_engine.arxiv import flatten_source, parse_links, parse_metadata
 
 FIXTURE = Path(__file__).parent / "fixtures" / "atom_sample.xml"
 
@@ -103,3 +103,89 @@ def test_parse_metadata_error_entry_raises_not_found():
     )
     with pytest.raises(ValueError, match="paper not found"):
         parse_metadata(error_feed)
+
+
+# ---- flatten_source ------------------------------------------------------------------------
+
+SINGLE_FILE = r"""\documentclass{article}
+\usepackage{amsmath}
+\begin{document}
+\section{Intro}
+Hello world.
+\end{document}
+"""
+
+
+def test_flatten_single_gzipped_tex_file(make_gz):
+    body = flatten_source(make_gz(SINGLE_FILE))
+    assert body == "\\section{Intro}\nHello world."  # only what is inside the document
+
+
+def test_flatten_multi_file_paper_inlines_input_and_include(make_tar_gz):
+    raw = make_tar_gz(
+        {
+            "main.tex": "\\documentclass{article}\n\\begin{document}\n"
+            "\\input{intro}\n\\include{sections/methods.tex}\n\\end{document}\n",
+            "intro.tex": "\\section{Intro} Intro text.",
+            "sections/methods.tex": "\\section{Methods} Uses \\input{formula} inside.",
+            "formula.tex": "$x^2$",
+        }
+    )
+    body = flatten_source(raw)
+    assert "Intro text." in body
+    assert "\\section{Methods} Uses $x^2$ inside." in body  # nested input is inlined too
+    assert "\\input" not in body and "\\include" not in body
+
+
+def test_flatten_picks_the_file_with_documentclass(make_tar_gz):
+    raw = make_tar_gz(
+        {
+            "notes.tex": "just some notes",
+            "paper.tex": SINGLE_FILE,
+        }
+    )
+    assert "Hello world." in flatten_source(raw)
+
+
+def test_flatten_missing_input_file_becomes_empty(make_tar_gz):
+    raw = make_tar_gz(
+        {"main.tex": "\\documentclass{article}\\begin{document}A\\input{nothere}B\\end{document}"}
+    )
+    assert flatten_source(raw) == "AB"
+
+
+def test_flatten_strips_comments_but_keeps_escaped_percent(make_gz):
+    tex = (
+        "\\documentclass{article}\\begin{document}\n"
+        "Growth was 5\\% last year. % this is a comment\n"
+        "% \\input{secret}\n"
+        "Next line.\n\\end{document}"
+    )
+    body = flatten_source(make_gz(tex))
+    assert "comment" not in body and "secret" not in body
+    assert "Growth was 5\\% last year." in body
+    assert "Next line." in body
+
+
+def test_flatten_cuts_at_the_bibliography(make_gz):
+    tex = (
+        "\\documentclass{article}\\begin{document}Body text.\n"
+        "\\bibliographystyle{plain}\n\\bibliography{refs}\n\\end{document}"
+    )
+    assert flatten_source(make_gz(tex)).startswith("Body text.")
+    assert "bibliography{refs}" not in flatten_source(make_gz(tex))
+
+
+def test_flatten_pdf_only_source_raises():
+    with pytest.raises(ValueError, match="PDF-only"):
+        flatten_source(b"%PDF-1.5 pretend pdf bytes")
+
+
+def test_flatten_gzipped_pdf_only_source_raises(make_gz):
+    with pytest.raises(ValueError, match="PDF-only"):
+        flatten_source(make_gz("%PDF-1.5 pretend pdf bytes"))
+
+
+def test_flatten_without_documentclass_raises(make_tar_gz):
+    with pytest.raises(ValueError, match="no main .tex"):
+        flatten_source(make_tar_gz({"a.tex": "no class here"}))

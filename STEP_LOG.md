@@ -155,3 +155,46 @@ constant in `llm.py`, switching later is a one-line change if the records turn o
 **Concepts:** The SDK's `client.responses.parse(..., text_format=StudyRecord)` does the same job as
 Claude's structured outputs: the reply is constrained to the Pydantic schema and arrives validated as
 `response.output_parsed`. Token usage is `response.usage.input_tokens` / `output_tokens`.
+
+## Step 3: LaTeX source and flattening
+**What it built:** The second half of `arxiv.py`: downloading a paper's LaTeX source and turning it into one
+clean string containing just the paper body. On a real paper (2611.27274) it produced about 62,000
+characters, roughly 6,700 words, starting at the abstract and ending before the bibliography.
+
+**Code to know:**
+- `fetch_source(id)`: downloads `arxiv.org/e-print/<id>` and returns raw bytes (`_get` now returns bytes;
+  `fetch_metadata` decodes them to text).
+- `flatten_source(raw)`: the whole pipeline in four lines: read files, strip comments, find the main
+  file and inline its `\input`s, keep the body.
+- `_read_tex_files`: un-gzips, rejects PDFs, then reads `.tex` files from the tar into a dict, in memory.
+- `_find_main_file`: the file containing `\documentclass` (longest one if several).
+- `_inline_inputs`: replaces `\input{x}` / `\include{x}` with `x.tex`'s text, recursively; missing is empty.
+- `_keep_body`: keeps text between `\begin{document}` and `\end{document}`, cut at the bibliography.
+- `tests/conftest.py`: fixtures that build fake downloads (gzipped file, tar.gz) in memory.
+- `scripts/try_paper.py source <link>`: prints body size and the first 1,500 characters.
+
+**Concepts:**
+- **Magic bytes:** gzip files start with `\x1f\x8b` and PDFs with `%PDF`, so we can tell what was downloaded
+  by looking at its first bytes instead of trusting a file name.
+- **`tarfile` in memory:** `tarfile.open(fileobj=io.BytesIO(raw))` reads an archive without writing files, so a
+  hostile archive can't write outside our folder.
+- **Regex substitution with a function:** `re.sub(pattern, fn, text)` calls `fn` for each match. `_inline_inputs`
+  uses that, and `fn` calls `_inline_inputs` again, which handles nested `\input`s.
+
+**Design choices:**
+- Read everything in memory. Simpler alternative: extract to a temp folder. In memory is shorter and safer.
+- Remove comments before inlining. Otherwise a commented-out `\input` or old text would reach the LLM.
+- No section splitting at all (chunking is out of scope): the LLM reads the whole body.
+- Known limitations: no macro expansion, appendices placed after the bibliography are cut, a `%` inside
+  verbatim code is treated as a comment, files that include themselves would loop forever.
+
+**Why it matters (interview):** It shows I handled messy real-world input (several archive layouts) with a few
+small, individually tested functions rather than one big parser.
+
+**Likely interview questions:**
+- *Why not use a LaTeX parsing library?* The LLM reads LaTeX fine. All I need is the body text with comments
+  gone and the files joined, which is four small regex steps. A parser would be a new dependency to explain.
+- *What if the paper has no LaTeX source?* Some papers only upload a PDF. We detect `%PDF` and raise a clear
+  error, and the Add tab will show that paper as failed. PDF upload is out of scope for v1.
+- *Why read the tar in memory?* Archives come from the internet, so I don't want to extract files from them to
+  disk. Reading members into strings avoids path tricks entirely.
