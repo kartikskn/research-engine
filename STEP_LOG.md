@@ -363,3 +363,46 @@ plain summary) first, and reused one rendering function rather than copying it.
   and text it produced. The real logic lives in `research_engine/`, which has normal pytest tests.
 - *Why is the app's data loaded after the Add tab?* The script runs top to bottom on every click. If I loaded the library
   first, a paper added in this click wouldn't show until the next rerun.
+
+## Step 8: Library tab (filters, search, CSV)
+**What it built:** `library.py`, three pure functions on the library DataFrame, and the Library tab that uses them: filters by
+category, year and author, a TF-IDF search box ranked by cosine similarity, a results table, and a "Download CSV" button.
+Checked headlessly on the real library: searching "volatility forecasting" returned the two volatility papers, and the
+category and author filters narrowed the list correctly.
+
+**Code to know:**
+- `apply_filters(df, categories, year_range, author)`: pandas boolean filters. An empty filter keeps everything; the author
+  filter is a case-insensitive substring match against any author.
+- `search_text(row)`: the text we index per paper: title, abstract, plain summary, concept terms, keywords and methods
+  (clean prose from the record, not the raw LaTeX).
+- `search(df, query)`: fits `TfidfVectorizer(stop_words="english", sublinear_tf=True)` on those texts, scores the query by
+  `cosine_similarity`, drops zero scores and sorts best first. An empty query returns everything, newest first.
+- `to_csv_frame(df)`: flattens each record into one row of text (lists joined with `; `, concepts as `term: explanation | ...`).
+- `app.library_tab(df)`: filter widgets, search box, table and `st.download_button`. The CSV is of the current results.
+- `tests/conftest.py`: a `paper_factory` fixture and a `library_df` fixture (three papers saved to and loaded from an
+  in-memory SQLite database). `tests/test_library.py` has 15 tests.
+
+**Concepts:**
+- **TF-IDF:** each word is weighted by how often it appears in a paper (term frequency) and how rare it is across the library
+  (inverse document frequency), so distinctive words like "cointegration" count more than common ones.
+- **Cosine similarity:** the angle between the query's vector and each paper's vector; 1 means the same direction, 0 means no
+  shared words. `sublinear_tf=True` uses `1 + log(tf)` so a word repeated 20 times doesn't swamp the score.
+- **`st.columns`, `st.multiselect`, `st.slider`, `st.download_button`:** layout and widgets; the download button gets the CSV text.
+
+**Design choices:**
+- Search the record text, not the LaTeX. Simpler alternative: index the full paper. The records are clean prose, so the index
+  is small and the matches are meaningful.
+- Refit the TF-IDF index on every search. Simpler alternative: cache it. It takes milliseconds, and nothing can go stale.
+- Search runs after the filters, so the vocabulary and scores only involve papers still in play.
+- The year slider is hidden when every paper is from the same year (a slider needs a range).
+- Known limitations: a search made only of stop words matches nothing; search is on words, not meaning (no synonyms).
+
+**Why it matters (interview):** It shows I can apply familiar tools (pandas, scikit-learn) to a real feature and keep the logic in
+pure, tested functions with the UI as a thin layer.
+
+**Likely interview questions:**
+- *How does the search work?* I build a text per paper from its record, fit a TF-IDF vectorizer over the library, turn the query
+  into the same kind of vector and rank papers by cosine similarity, dropping the ones with a score of zero.
+- *Why TF-IDF rather than embeddings?* The library is small, TF-IDF is free, instant and explainable, and technical terms like
+  "GARCH" are exactly the sort of distinctive words it handles well. Embeddings would add a service and cost.
+- *Why refit the vectorizer on each search?* For tens or hundreds of papers it's milliseconds, so I avoid cache invalidation bugs.

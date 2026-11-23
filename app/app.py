@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 from openai import OpenAI, OpenAIError
 
-from research_engine import arxiv, ingest, storage
+from research_engine import arxiv, ingest, library, storage
 from research_engine.models import Paper
 
 
@@ -63,8 +63,27 @@ def render_record(paper: Paper, open_details: bool = False) -> None:
         st.markdown("**Keywords**\n\n" + ", ".join(record.keywords))
 
 
-def library_tab() -> None:
-    st.write("Library: coming in step 8.")
+def library_tab(df: pd.DataFrame) -> None:
+    if df.empty:
+        st.info("No papers yet. Add some in the Add tab.")
+        return
+    col_category, col_year, col_author = st.columns(3)
+    categories = col_category.multiselect("Category", sorted(df["primary_category"].unique()))
+    first_year, last_year = int(df["year"].min()), int(df["year"].max())
+    year_range = (first_year, last_year)
+    if first_year < last_year:  # a slider needs a range, so skip it when every paper is from one year
+        year_range = col_year.slider("Year", first_year, last_year, (first_year, last_year))
+    author = col_author.text_input("Author contains")
+    query = st.text_input("Search the library", placeholder="e.g. realised volatility forecasting")
+
+    results = library.search(library.apply_filters(df, categories, year_range, author), query)
+    table = library.to_csv_frame(results)
+    st.write(f"{len(results)} of {len(df)} papers")
+    st.dataframe(
+        table[["arxiv_id", "title", "authors", "published", "primary_category", "plain_summary"]],
+        hide_index=True,
+    )
+    st.download_button("Download CSV", table.to_csv(index=False), "library.csv", "text/csv")
 
 
 def paper_tab(db, df: pd.DataFrame) -> None:
@@ -98,7 +117,7 @@ def main() -> None:
         add_tab(db)
     df = storage.load_library(db)  # loaded after the Add tab, so a paper just added shows up at once
     with library:
-        library_tab()
+        library_tab(df)
     with paper:
         paper_tab(db, df)
     with glossary:
