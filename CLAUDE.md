@@ -1,5 +1,5 @@
 # Research Learning Library
-
+'''
 ## What this is
 A simple learning library: I add research papers from arXiv and it helps me understand,
 connect and compare them. A humble student project that I must be able to explain end
@@ -70,5 +70,8 @@ needed and what the simpler alternative would be.
   say go.
 - Never add a library, file or feature that isn't in PLAN.md without asking me first.
 - Don't touch files outside this project folder.
+- After each step, add an entry to STEP_LOG.md before asking me to run the check.
 - After I confirm a step's check passes, make a git commit named
   "step N: <short description>".
+- After each step's commit, push to GitHub.
+'''
