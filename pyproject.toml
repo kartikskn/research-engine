@@ -1,0 +1,27 @@
+[project]
+name = "research-engine"
+version = "0.1.0"
+description = "A simple learning library for arXiv research papers"
+requires-python = ">=3.12"
+dependencies = [
+    "streamlit",
+    "pandas",
+    "scikit-learn",
+    "pydantic",
+    "anthropic",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+# Only package the library code. Without this, setuptools sees both app/ and
+# research_engine/ at the top level and refuses to guess which one to install.
+[tool.setuptools]
+packages = ["research_engine"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
